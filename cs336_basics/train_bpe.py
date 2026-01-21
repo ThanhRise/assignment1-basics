@@ -1,5 +1,5 @@
 import os
-from pretokenization_example import find_chunk_boundaries
+from cs336_basics.pretokenization_example import find_chunk_boundaries
 import multiprocessing as mp
 import regex as re
 from collections import Counter, defaultdict
@@ -8,7 +8,7 @@ from functools import reduce
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
-def run_train_bpe(
+def run_train_bpe_backend(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
@@ -38,14 +38,16 @@ def run_train_bpe(
     pre_token_count = count_pre_token(input_path, special_tokens)
     vocab_list = []
     byte_start_offset = len(special_tokens)
-    for byte_seq, freq in pre_token_count.items():
-        vocab_list.append({
-            'tokens': [b + byte_start_offset  for b in byte_seq],
-            'freq': freq
-        })
 
     current_vocab = {i: s.encode("utf-8") for i, s in enumerate(special_tokens)}
     current_vocab = current_vocab | {i + byte_start_offset: bytes([i]) for i in range(256)}
+
+    for byte_seq, freq in pre_token_count.items():
+        vocab_list.append({
+            'tokens': [bytes([b]) for b in byte_seq],
+            'freq': freq
+        })
+
     next_token_ids = 256 + len(special_tokens)
     merges = []
 
@@ -66,13 +68,13 @@ def run_train_bpe(
         if not stats:
             break
 
-        best_pair = max(stats, key=lambda p: (stats[p], -p[0], -p[1]))
+        best_pair = max(stats, key=lambda p: (stats[p], p[0], p[1]))
         if stats[best_pair] < 1:
             break
 
         #Record Merge
         merges.append(best_pair)
-        new_token_bytes = current_vocab[best_pair[0]] + current_vocab[best_pair[1]]
+        new_token_bytes = best_pair[0] + best_pair[1]
         current_vocab[next_token_ids] = new_token_bytes
         word_to_update = list(indices[best_pair].keys())
 
@@ -94,7 +96,7 @@ def run_train_bpe(
                         stats[next_pair] -= freq
                         if stats[next_pair]==0: del stats[next_pair]
 
-                    tokens[i] = next_token_ids
+                    tokens[i] =  current_vocab[next_token_ids]
                     del tokens[i+1]
 
                     if i > 0:
@@ -117,12 +119,13 @@ def run_train_bpe(
     
         
 def count_pre_token(input_path: str | os.PathLike, special_tokens: list[str]) -> Counter:
+    file_size = os.path.getsize(input_path)
     with open(input_path, "rb") as f:
-        num_chunk = 8
+        num_chunk = max(1, int(file_size / 50000000))
         special_tokens_bytpe = [s.encode() for s in special_tokens]
         boundaries = find_chunk_boundaries(f, num_chunk, special_tokens_bytpe)
         results = Counter()
-        num_processes = 4
+        num_processes = min(16, num_chunk)
 
         with mp.Pool(processes=num_processes) as pool:
             # Buffer to hold arguments for one batch
@@ -136,7 +139,7 @@ def count_pre_token(input_path: str | os.PathLike, special_tokens: list[str]) ->
                 batch_args.append((chunk_text, special_tokens))
                 
                 if len(batch_args) == num_processes:
-                    print(f"Processing batch of {len(batch_args)} chunks...")
+                    # print(f"Processing batch of {len(batch_args)} chunks...")
                     batch_results = pool.imap_unordered(pre_tokenization, batch_args)
                     
                     for res in batch_results:
@@ -146,7 +149,7 @@ def count_pre_token(input_path: str | os.PathLike, special_tokens: list[str]) ->
 
             # 4. CRITICAL: Process the remainder (leftover chunks)
             if batch_args:
-                print(f"Processing final tail of {len(batch_args)} chunks...")
+                # print(f"Processing final tail of {len(batch_args)} chunks...")
                 batch_results = pool.imap_unordered(pre_tokenization, batch_args)
                 for res in batch_results:
                     results.update(res)
@@ -178,4 +181,4 @@ def pre_tokenization(
 
 
 if __name__ == "__main__":
-    run_train_bpe("data/TinyStoriesV2-GPT4-valid.txt", 4000, ["<|endoftext|>"])
+    run_train_bpe_backend("data/TinyStoriesV2-GPT4-valid.txt", 1000, ["<|endoftext|>"])
