@@ -1,9 +1,11 @@
 import os
 from cs336_basics.pretokenization_example import find_chunk_boundaries
+from cs336_basics.tokenizer import save_bpe
 import multiprocessing as mp
 import regex as re
 from collections import Counter, defaultdict
 from functools import reduce
+from tqdm import tqdm
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
@@ -64,56 +66,58 @@ def run_train_bpe_backend(
 
     current_vocab_size = len(current_vocab)
 
-    while current_vocab_size < vocab_size:
-        if not stats:
-            break
+    with tqdm(total= vocab_size-current_vocab_size, desc="merges...") as pbar:
+        while current_vocab_size < vocab_size:
+            if not stats:
+                break
 
-        best_pair = max(stats, key=lambda p: (stats[p], p[0], p[1]))
-        if stats[best_pair] < 1:
-            break
+            best_pair = max(stats, key=lambda p: (stats[p], p[0], p[1]))
+            if stats[best_pair] < 1:
+                break
 
-        #Record Merge
-        merges.append(best_pair)
-        new_token_bytes = best_pair[0] + best_pair[1]
-        current_vocab[next_token_ids] = new_token_bytes
-        word_to_update = list(indices[best_pair].keys())
+            #Record Merge
+            merges.append(best_pair)
+            new_token_bytes = best_pair[0] + best_pair[1]
+            current_vocab[next_token_ids] = new_token_bytes
+            word_to_update = list(indices[best_pair].keys())
 
-        for word_idx in word_to_update:
-            word_obj = vocab_list[word_idx]
-            tokens = word_obj['tokens']
-            freq = word_obj['freq']
+            for word_idx in word_to_update:
+                word_obj = vocab_list[word_idx]
+                tokens = word_obj['tokens']
+                freq = word_obj['freq']
 
-            i = 0
-            while i < len(tokens) - 1:
-                if tokens[i] == best_pair[0] and tokens[i+1] == best_pair[1]:
-                    if i > 0:
-                        prev_pair = (tokens[i-1], tokens[i])
-                        stats[prev_pair] -= freq
-                        if  stats[prev_pair] == 0: del  stats[prev_pair] 
+                i = 0
+                while i < len(tokens) - 1:
+                    if tokens[i] == best_pair[0] and tokens[i+1] == best_pair[1]:
+                        if i > 0:
+                            prev_pair = (tokens[i-1], tokens[i])
+                            stats[prev_pair] -= freq
+                            if  stats[prev_pair] == 0: del  stats[prev_pair] 
 
-                    if i < len(tokens) -2:
-                        next_pair = (tokens[i+1], tokens[i+2])
-                        stats[next_pair] -= freq
-                        if stats[next_pair]==0: del stats[next_pair]
+                        if i < len(tokens) -2:
+                            next_pair = (tokens[i+1], tokens[i+2])
+                            stats[next_pair] -= freq
+                            if stats[next_pair]==0: del stats[next_pair]
 
-                    tokens[i] =  current_vocab[next_token_ids]
-                    del tokens[i+1]
+                        tokens[i] =  current_vocab[next_token_ids]
+                        del tokens[i+1]
 
-                    if i > 0:
-                        new_prev_pair = (tokens[i-1], tokens[i])
-                        stats[new_prev_pair] += freq
-                        indices[new_prev_pair][word_idx] = 1
+                        if i > 0:
+                            new_prev_pair = (tokens[i-1], tokens[i])
+                            stats[new_prev_pair] += freq
+                            indices[new_prev_pair][word_idx] = 1
 
-                    if i < len(tokens) - 1:
-                        new_next_pair = (tokens[i], tokens[i+1])
-                        stats[new_next_pair] += freq
-                        indices[new_next_pair][word_idx] = 1
+                        if i < len(tokens) - 1:
+                            new_next_pair = (tokens[i], tokens[i+1])
+                            stats[new_next_pair] += freq
+                            indices[new_next_pair][word_idx] = 1
 
-                else: i+=1
-        del stats[best_pair]
-        del indices[best_pair]
-        next_token_ids+=1
-        current_vocab_size+=1
+                    else: i+=1
+            del stats[best_pair]
+            del indices[best_pair]
+            next_token_ids+=1
+            current_vocab_size+=1
+            pbar.update(1)
 
     return current_vocab, merges
     
@@ -132,7 +136,7 @@ def count_pre_token(input_path: str | os.PathLike, special_tokens: list[str]) ->
             batch_args = []
             
             # Iterate through boundaries pairs (start, end)
-            for start, end in zip(boundaries[:-1], boundaries[1:]):
+            for start, end in tqdm(zip(boundaries[:-1], boundaries[1:]), total=len(boundaries), desc="Pre-process tokenization..."):
                 f.seek(start)
                 chunk_text = f.read(end - start).decode("utf-8", errors="ignore")
 
@@ -181,4 +185,5 @@ def pre_tokenization(
 
 
 if __name__ == "__main__":
-    run_train_bpe_backend("data/TinyStoriesV2-GPT4-valid.txt", 1000, ["<|endoftext|>"])
+    vocab, merges = run_train_bpe_backend("data/TinyStoriesV2-GPT4-valid.txt", 1000, ["<|endoftext|>"])
+    save_bpe(vocab, merges, "data/bpe") 
