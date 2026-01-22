@@ -62,17 +62,46 @@ class BPETokenizer:
     rankMap = None
     def __init__(self, vocab, merges, special_tokens=None):
         self.vocab = vocab
+        self.vocab_reverse = {v: k for k, v in self.vocab.items()}
         self.merges = merges
         self.special_tokens = special_tokens
         BPETokenizer.rankMap = {pair: rank for rank, pair in enumerate(self.merges)}
 
-    @staticmethod
-    def bytesToTokens(text: str) -> list[bytes]:
-        return [
-            bytes([b])
-            for m in re.finditer(PAT, text)
-            for b in m.group().encode('utf-8')
-        ]
+    def bytesToTokens(self, text: str) -> list[bytes]:
+        if self.special_tokens is None:
+            return [
+                    bytes([b])
+                    for m in re.finditer(PAT, text)
+                    for b in m.group().encode('utf-8')
+                ]
+        
+        sorted_specials = sorted(self.special_tokens, key=len, reverse=True)
+        pattern = "|".join(re.escape(tok) for tok in sorted_specials)
+        special_tokens_index = re.finditer(pattern, text)
+        segments = re.split(pattern, text)
+        if len(segments) == 1: 
+            return [
+                    bytes([b])
+                    for m in re.finditer(PAT, segments[0])
+                    for b in m.group().encode('utf-8')
+                ]
+        
+        indices_bytes = []
+        for seg, match in zip(segments[:-1], special_tokens_index):
+            if seg != '':
+                indices_bytes.extend([
+                    bytes([b])
+                    for m in re.finditer(PAT, seg)
+                    for b in m.group().encode('utf-8')
+                ])
+            indices_bytes.append(bytes(match.group().encode('utf-8')))
+        if segments[-1] != '':
+                indices_bytes.extend([
+                    bytes([b])
+                    for m in re.finditer(PAT, segments[-1])
+                    for b in m.group().encode('utf-8')
+                ])
+        return indices_bytes
     
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
@@ -111,7 +140,7 @@ class BPETokenizer:
     ) -> list[int]: 
         
         while len(heapRank) != 0:
-            rank, idx = heapRank.pop()
+            rank, idx = heapq.heappop(heapRank)
 
             if valueP[idx] == None: continue
             next_idx = nextP[idx]
@@ -120,7 +149,12 @@ class BPETokenizer:
             current_rank = BPETokenizer.rankMap.get(current_pair, float('inf'))
             if current_rank != rank: continue
             
-            new_token = self.merges[current_pair]
+            new_token = valueP[idx] + valueP[next_idx]
+            
+            # Only perform merge if the resulting token exists in vocab
+            if new_token not in self.vocab_reverse:
+                continue
+            
             valueP[idx] = new_token
 
             node_to_remove = next_idx
@@ -140,21 +174,59 @@ class BPETokenizer:
             if new_next != -1:
                 pair = (valueP[idx], valueP[new_next])
                 rank = BPETokenizer.rankMap.get(pair, float('inf'))
-                if rank != float('int'):
+                if rank != float('inf'):
                     heapq.heappush(heapRank, (rank, idx))
 
         results = []
         curr = 0
         while curr != -1 :
-            results.append(valueP[curr])
+            if valueP[curr] in self.vocab_reverse:
+                results.append(self.vocab_reverse[valueP[curr]])
             curr = nextP[curr]
         
         return results
 
     def encode(self, text: str) -> list[int]:
-        indices = self.bytesToTokens(text)
-        nextP, prevP, valueP, heapRank = self.initializeStructures(indices, self.merges)
-        results = self.BPEInference(nextP, prevP, valueP, heapRank)
+        if text == "" or text == '' or text is None: return []
+        
+        results = []
+        
+        if self.special_tokens is None:
+            # No special tokens - just apply BPE per PAT segment
+            for match in re.finditer(PAT, text):
+                segment_bytes = [bytes([b]) for b in match.group().encode('utf-8')]
+                if segment_bytes:
+                    nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
+                    results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+        else:
+            # Handle special tokens first, then apply BPE per PAT segment
+            sorted_specials = sorted(self.special_tokens, key=len, reverse=True)
+            pattern = "|".join(re.escape(tok) for tok in sorted_specials)
+            segments = re.split(pattern, text)
+            special_matches = re.finditer(pattern, text)
+            
+            # Process segments and special tokens
+            for seg, match_iter in zip(segments[:-1], special_matches):
+                # Process regular segment with PAT
+                if seg:
+                    for pat_match in re.finditer(PAT, seg):
+                        segment_bytes = [bytes([b]) for b in pat_match.group().encode('utf-8')]
+                        if segment_bytes:
+                            nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
+                            results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+                
+                # Add special token
+                special_token = match_iter.group()
+                results.append(self.vocab_reverse[special_token.encode('utf-8')])
+            
+            # Process last segment
+            if segments[-1]:
+                for pat_match in re.finditer(PAT, segments[-1]):
+                    segment_bytes = [bytes([b]) for b in pat_match.group().encode('utf-8')]
+                    if segment_bytes:
+                        nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
+                        results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+        
         return results
 
 
@@ -163,8 +235,12 @@ class BPETokenizer:
             yield from self.encode(text)
     
     def decode(self, ids: list[int]) -> str:
-        bytes_list = list(map(self.vocab, ids))
-        return b"".join(bytes_list).decode('utf-8')
+        bytes_list = list(map(self.vocab.get, ids))
+        return b"".join(bytes_list).decode('utf-8', errors='ignore')
 
-   
+
+if __name__ == "__main__":
+    bpe_tokenizer = BPETokenizer.from_files("data/bpe_vocab.json", "data/bpe_merges.txt", ["<|endoftext|>"])
+    print(bpe_tokenizer.encode(""))
+    print(bpe_tokenizer.decode(bpe_tokenizer.encode("hello, what are you doing<|endoftext|>. I'm fine. Thank you")))
             

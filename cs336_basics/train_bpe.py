@@ -185,5 +185,5 @@ def pre_tokenization(
 
 
 if __name__ == "__main__":
-    vocab, merges = run_train_bpe_backend("data/TinyStoriesV2-GPT4-valid.txt", 1000, ["<|endoftext|>"])
+    vocab, merges = run_train_bpe_backend("data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
     save_bpe(vocab, merges, "data/bpe") 
