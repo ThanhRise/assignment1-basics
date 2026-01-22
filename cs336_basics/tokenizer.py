@@ -150,11 +150,6 @@ class BPETokenizer:
             if current_rank != rank: continue
             
             new_token = valueP[idx] + valueP[next_idx]
-            
-            # Only perform merge if the resulting token exists in vocab
-            if new_token not in self.vocab_reverse:
-                continue
-            
             valueP[idx] = new_token
 
             node_to_remove = next_idx
@@ -180,8 +175,7 @@ class BPETokenizer:
         results = []
         curr = 0
         while curr != -1 :
-            if valueP[curr] in self.vocab_reverse:
-                results.append(self.vocab_reverse[valueP[curr]])
+            results.append(self.vocab_reverse[valueP[curr]])
             curr = nextP[curr]
         
         return results
@@ -194,38 +188,47 @@ class BPETokenizer:
         if self.special_tokens is None:
             # No special tokens - just apply BPE per PAT segment
             for match in re.finditer(PAT, text):
-                segment_bytes = [bytes([b]) for b in match.group().encode('utf-8')]
+                segment_text = match.group()
+                segment_bytes = [bytes([b]) for b in segment_text.encode('utf-8')]
                 if segment_bytes:
                     nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
                     results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+                    # Clear to save memory
+                    del segment_bytes, nextP, prevP, valueP, heapRank
         else:
             # Handle special tokens first, then apply BPE per PAT segment
             sorted_specials = sorted(self.special_tokens, key=len, reverse=True)
             pattern = "|".join(re.escape(tok) for tok in sorted_specials)
             segments = re.split(pattern, text)
-            special_matches = re.finditer(pattern, text)
+            special_matches = list(re.finditer(pattern, text))
             
             # Process segments and special tokens
-            for seg, match_iter in zip(segments[:-1], special_matches):
+            for i, seg in enumerate(segments[:-1]):
                 # Process regular segment with PAT
                 if seg:
                     for pat_match in re.finditer(PAT, seg):
-                        segment_bytes = [bytes([b]) for b in pat_match.group().encode('utf-8')]
+                        segment_text = pat_match.group()
+                        segment_bytes = [bytes([b]) for b in segment_text.encode('utf-8')]
                         if segment_bytes:
                             nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
                             results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+                            del segment_bytes, nextP, prevP, valueP, heapRank
                 
                 # Add special token
-                special_token = match_iter.group()
+                special_token = special_matches[i].group()
                 results.append(self.vocab_reverse[special_token.encode('utf-8')])
             
             # Process last segment
             if segments[-1]:
                 for pat_match in re.finditer(PAT, segments[-1]):
-                    segment_bytes = [bytes([b]) for b in pat_match.group().encode('utf-8')]
+                    segment_text = pat_match.group()
+                    segment_bytes = [bytes([b]) for b in segment_text.encode('utf-8')]
                     if segment_bytes:
                         nextP, prevP, valueP, heapRank = self.initializeStructures(segment_bytes)
                         results.extend(self.BPEInference(nextP, prevP, valueP, heapRank))
+                        del segment_bytes, nextP, prevP, valueP, heapRank
+            
+            del segments, special_matches
         
         return results
 
