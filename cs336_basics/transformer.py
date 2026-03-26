@@ -11,6 +11,15 @@ from torch import Tensor
 from einops import rearrange, einsum
 import math
 
+def softMax(x: torch.Tensor, dim: int = -1, Temperature: float = 1):
+    max_val = torch.max(x, dim=dim, keepdim=True).values
+    stable_x = (x - max_val) / Temperature
+    exp_x = torch.exp(stable_x)
+    sum_exp = torch.sum(exp_x, dim=dim, keepdim=True)
+    prob = exp_x / sum_exp
+    return prob
+
+
 
 class Linear(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, bias: bool = False, device: torch.device | None = None, dtype: torch.dtype | None = None):
@@ -112,4 +121,32 @@ class SwiGLU(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (self.silu(x @ self.w1.T) * (x @ self.w3.T)) @  self.w2.T
+    
+class RoPE(torch.nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self.theta = theta
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        
+        inv_freq = 1.0 / (self.theta ** ((torch.arange(0, self.d_k, 2, dtype=torch.float32))/ self.d_k))
+        t = torch.arange(max_seq_len, dtype=torch.float32)
+        freqs = torch.outer(t, inv_freq)
+        emb = torch.repeat_interleave(freqs, repeats=2, dim=-1)
+        self.register_buffer("cos_cache", emb.cos(), persistent=False)
+        self.register_buffer("sin_cache", emb.sin(), persistent=False)
+
+    @staticmethod
+    def rotate_half(x: torch.Tensor) -> torch.Tensor:
+        x1 = x[..., 0::2]
+        x2 = x[..., 1::2]
+        return torch.stack((-x2, x1), dim=-1).flatten(start_dim=-2)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        cos = self.cos_cache[token_positions].to(x.dtype)
+        sin = self.sin_cache[token_positions].to(x.dtype)
+
+        x_rotated = (x * cos) + (self.rotate_half(x) * sin)
+        return x_rotated
+    
     
