@@ -134,7 +134,7 @@ class BPETokenizer:
     def BPEInference(
         self,
         nextP: list[int],
-        prevP: list[int],
+        prevP: list[int], 
         valueP: list[bytes | None],
         heapRank: list[tuple[int, int]]
     ) -> list[int]: 

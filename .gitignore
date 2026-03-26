@@ -166,3 +166,5 @@ logs/
 notebooks/
 .vscode
 .vscode/
+docs/
+docs
