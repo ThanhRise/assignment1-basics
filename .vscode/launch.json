@@ -21,7 +21,7 @@
             "args": [
                 "${file}",
                 "-s",
-                "-k test_multihead_self_attention_with_rope",
+                "-k test_get_batch",
                 "-vv"
             ],
             "console": "integratedTerminal",
