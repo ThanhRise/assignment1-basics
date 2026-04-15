@@ -248,7 +248,8 @@ class BPETokenizer:
     def convert_tokens_to_ids(self, tokens):
         ids = []
         for token in tokens:
-            token_id = self.vocab.get(token, None)
+            byte_token = token.encode('utf-8')
+            token_id = self.vocab_reverse.get(byte_token, None)
             if token_id is not None:
                 ids.append(token_id)
             else:

@@ -2,8 +2,9 @@ import os
 import json
 import numpy as np
 from cs336_basics.tokenizer import BPETokenizer
+from tqdm import tqdm
 
-def process_to_shards(input_path: str, output_dir: str, tokenizer, shard_size_tokens=10**7):
+def process_to_shards(input_path: str, output_dir: str, tokenizer: BPETokenizer, shard_size_tokens=10**7):
     os.makedirs(output_dir, exist_ok=True)
 
     eot_token = "<|endoftext|>"
