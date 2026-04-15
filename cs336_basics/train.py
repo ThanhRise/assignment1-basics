@@ -66,12 +66,12 @@ def main(cfg: DictConfig):
     valid_loader = DataLoader(valid_data, batch_size=cfg.batch_size, shuffle=True, num_workers=cfg.num_workers)
 
     model = TransformerLM(vocab_size=cfg.vocab_size, context_length=cfg.context_length, num_layers=cfg.num_layers, num_heads=cfg.num_heads, d_model=cfg.d_model, d_ff=cfg.d_ff, rope_theta=cfg.theta)
+    model = model.to(local_rank)
     criterion = crossEntropyLoss
     optimizer = AdamWOptimizer(model.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2), weight_decay=cfg.weight_decay)
     if cfg.from_checkpoint:
         iteration = load_checkpoint(cfg.from_checkpoint, model, optimizer)
     else: iteration = 0
-    model = model.to(local_rank)
     model = DDP(model, device_ids=[local_rank])
     os.makedirs(cfg.checkponts, exist_ok=True)
 

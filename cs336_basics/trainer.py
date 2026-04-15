@@ -80,7 +80,7 @@ class CausalLMTrainer:
                         "global_step": self.global_step
                     })
                 
-        return total_loss / (self.cfg.iters_per_epoch / step_trained_in_current_epoch)
+        return total_loss / (self.cfg.iters_per_epoch - step_trained_in_current_epoch)
     
     @torch.no_grad()
     def evaluation(self):
@@ -88,7 +88,7 @@ class CausalLMTrainer:
         total_loss = 0
         for batch in tqdm(self.valid_loader, desc="Evaluating"):
             input_ids = batch['input_ids'].to(self.local_rank)
-            labels = batch['lables'].to(self.local_rank)
+            labels = batch['labels'].to(self.local_rank)
 
             logits = self.model(input_ids)
             loss = self.criterion(logits, labels)
@@ -104,7 +104,7 @@ class CausalLMTrainer:
             data_iterator = iter(get_infinite_batches(self.train_loader, epoch))
             self.train_iter_per_epoch(data_iterator)
             if self.local_rank == 0:
-                save_checkpoint(self.model, self.optimizer, self.current_epoch * self.cfg.iters_per_epoch)
+                save_checkpoint(self.model, self.optimizer, (self.current_epoch + 1) * self.cfg.iters_per_epoch)
                 loss_eval = self.evaluation()
                 logger.info(f"Evaluation at epoch {epoch} | loss_eval: {loss_eval}")
                 if self.use_wandb:

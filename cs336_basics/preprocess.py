@@ -49,7 +49,7 @@ def doc_batches_iterator(input_path, chunk_size, eot_token, batch_size=500):
         if batch:
             yield batch
 
-def process_to_shards(input_path: str, output_dir: str, tokenizer: BPETokenizer, shard_size_tokens=10**7):
+def process_to_shards(input_path: str, output_dir: str, tokenizer: BPETokenizer, shard_size_tokens=1e9):
     os.makedirs(output_dir, exist_ok=True)
 
     file_size = os.path.getsize(input_path)
