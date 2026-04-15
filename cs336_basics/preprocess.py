@@ -1,6 +1,7 @@
 import os
 import json
 import numpy as np
+from cs336_basics.tokenizer import BPETokenizer
 
 def process_to_shards(input_path: str, output_dir: str, tokenizer, shard_size_tokens=10**7):
     os.makedirs(output_dir, exist_ok=True)
@@ -78,3 +79,8 @@ def process_to_shards(input_path: str, output_dir: str, tokenizer, shard_size_to
 
     with open(os.path.join(output_dir, "metadata.json"), "w") as f:
         json.dump(manifest, f, indent=4)
+
+if __name__ == "__main__":
+    tokenizer = BPETokenizer.from_files("data/bpe_vocab.json", "data/bpe_merges.txt", ["<|endoftext|>"])
+    process_to_shards("data/owt_train.txt", "data/train-bin", tokenizer)
+    print("Done!")
