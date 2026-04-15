@@ -9,9 +9,12 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from transformer import *
-from tokenizer import *
-from trainer import CausalLMTrainer
+from cs336_basics.model import TransformerLM
+from cs336_basics.loss import crossEntropyLoss
+from cs336_basics.optimizer import AdamWOptimizer
+from cs336_basics.utils import load_checkpoint, save_checkpoint
+from cs336_basics.data import ShardedDataset
+from cs336_basics.trainer import CausalLMTrainer
 
 def setup_logger(log_dir="logs", log_file="training.log"):
 

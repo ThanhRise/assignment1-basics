@@ -4,8 +4,8 @@ from tqdm import tqdm
 import wandb
 from omegaconf import DictConfig
 
-from transformer import *
-from tokenizer import *
+from cs336_basics.lr_schedule import lr_cosine_schedule
+from cs336_basics.utils import gradient_clipping, save_checkpoint
 import logging
 logger = logging.getLogger(__name__)
 
