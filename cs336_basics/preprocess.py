@@ -132,7 +132,8 @@ def process_to_shards(input_path: str, output_dir: str, tokenizer: BPETokenizer,
     print(f"\nPreprocessing complete: {total_docs:,} docs, {total_tokens:,} tokens, {len(all_shard_metadata)} shards")
 
     manifest = {
-        "tokenizer" : tokenizer.__class__.__name__ ,
+        "tokenizer": tokenizer.__class__.__name__,
+        "vocab_size": len(vocab),
         "dtype": "uint16",
         "total_tokens": sum(m["tokens"] for m in all_shard_metadata),
         "shards": all_shard_metadata

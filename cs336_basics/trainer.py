@@ -39,8 +39,8 @@ class CausalLMTrainer:
         self.cfg = cfg
 
         self.global_step = global_step
-        self.current_epoch = global_step // self.cfg.iters_per_epoch
-        self.max_step = self.cfg.iters_per_epoch * self.cfg.max_epoch
+        self.current_epoch = global_step // self.cfg.training.iters_per_epoch
+        self.max_step = self.cfg.training.iters_per_epoch * self.cfg.training.max_epoch
 
     def train_epoch(self):
         pass
@@ -48,13 +48,13 @@ class CausalLMTrainer:
     def train_iter_per_epoch(self, data_iterator):
         self.model.train()
         total_loss = 0
-        step_trained_in_current_epoch = self.global_step % self.cfg.iters_per_epoch
+        step_trained_in_current_epoch = self.global_step % self.cfg.training.iters_per_epoch
 
-        for step in range(self.cfg.iters_per_epoch):
+        for step in range(self.cfg.training.iters_per_epoch):
             batch = next(data_iterator)
             if step < step_trained_in_current_epoch:
                 continue
-            current_lr = lr_cosine_schedule(self.global_step, self.cfg.lr, self.cfg.min_lr, self.cfg.warmup, self.max_step)
+            current_lr = lr_cosine_schedule(self.global_step, self.cfg.training.lr, self.cfg.training.min_lr, self.cfg.training.warmup, self.max_step)
             set_learning_rate(self.optimizer, current_lr)
             input_ids = batch['input_ids'].to(self.local_rank)
             labels = batch['labels'].to(self.local_rank)
@@ -64,23 +64,23 @@ class CausalLMTrainer:
             loss = self.criterion(logits, labels)
             loss.backward()
 
-            gradient_clipping(self.model.parameters(), self.cfg.max_l2_norm)
+            gradient_clipping(self.model.parameters(), self.cfg.training.max_l2_norm)
             self.optimizer.step()
 
             self.global_step+=1
             total_loss += loss.item()
-            if self.local_rank==0 and self.global_step % self.cfg.log_interval == 0:
+            if self.local_rank==0 and self.global_step % self.cfg.logging.log_interval == 0:
                 logger.info(
                     f"Step: [{self.global_step}/{self.max_step}] | Loss: {loss.item():0.4f} | Lr: {current_lr}"
                 )
-                if self.use_wandb:
+                if self.cfg.logging.use_wandb:
                     wandb.log({
                         "train/step_loss": loss.item(),
                         "train/learning_rate": current_lr,
                         "global_step": self.global_step
                     })
                 
-        return total_loss / (self.cfg.iters_per_epoch - step_trained_in_current_epoch)
+        return total_loss / (self.cfg.training.iters_per_epoch - step_trained_in_current_epoch)
     
     @torch.no_grad()
     def evaluation(self):
@@ -99,15 +99,16 @@ class CausalLMTrainer:
 
 
     def train(self):
-        for epoch in range(self.current_epoch, self.cfg.max_epoch):
+        for epoch in range(self.current_epoch, self.cfg.training.max_epoch):
             self.current_epoch = epoch
             data_iterator = iter(get_infinite_batches(self.train_loader, epoch))
             self.train_iter_per_epoch(data_iterator)
             if self.local_rank == 0:
-                save_checkpoint(self.model, self.optimizer, (self.current_epoch + 1) * self.cfg.iters_per_epoch)
+                step = (self.current_epoch + 1) * self.cfg.training.iters_per_epoch
+                save_checkpoint(self.model, self.optimizer, step, f"{self.cfg.dataset.checkpoint_dir}/ckpt_{step}.pt")
                 loss_eval = self.evaluation()
                 logger.info(f"Evaluation at epoch {epoch} | loss_eval: {loss_eval}")
-                if self.use_wandb:
+                if self.cfg.logging.use_wandb:
                     wandb.log({
                         "validation/epoch": epoch,
                         "validation/loss": loss_eval

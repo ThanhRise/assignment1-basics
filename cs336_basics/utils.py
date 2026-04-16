@@ -57,8 +57,8 @@ def get_batch(
     batch = data.unfold(dimension=0, size=context_length, step=1)
     sampled_idx = torch.randperm(len(batch)-1)[:batch_size]
     sampled = batch[sampled_idx]
-    lable = batch[sampled_idx + 1]
-    return sampled, lable
+    labels = batch[sampled_idx+1]
+    return sampled, labels
 
 
 def save_checkpoint(
@@ -78,7 +78,7 @@ def save_checkpoint(
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
     state = {
-        "model": model.state_dict(),
+        "model": model.module.state_dict() if hasattr(model, 'module') else model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "iteration": iteration
     }

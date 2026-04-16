@@ -19,9 +19,8 @@ class Linear(torch.nn.Module):
         self.reset_parameter()
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.bias:
+        if self.bias is not None:
             return x @ self.weight.T + self.bias
-        # return x @ self.weight.T
         return einsum(x, self.weight, "... d_in, d_out d_in -> ... d_out")
 
     def reset_parameter(self) -> None:

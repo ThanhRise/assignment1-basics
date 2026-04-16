@@ -60,7 +60,7 @@ class ShardedDataset(torch.utils.data.Dataset):
             self._memmaps[shard_idx] = np.memmap(bin_path, dtype=self.dtype, mode='r')
         return self._memmaps[shard_idx]
     def __getitem__(self, global_idx):
-        if global_idx < 0 or global_idx > self.total_docs:
+        if global_idx < 0 or global_idx >= self.total_docs:
             raise IndexError("Dataset index out of range")
 
         shard_idx = bisect.bisect_right(self.cumulative_docs, global_idx)

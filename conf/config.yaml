@@ -9,7 +9,7 @@ model:
     context_length: 1024
     d_model: 768
     num_layers: 8
-    num_head: 12
+    num_heads: 12
     d_ff: 2048
     theta: 10000
 
