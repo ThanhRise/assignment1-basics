@@ -149,10 +149,14 @@ class CausalLMTrainer:
             self.current_epoch = epoch
             data_iterator = iter(get_infinite_batches(self.train_loader, epoch))
             self.train_iter_per_epoch(data_iterator)
+            
             if self.local_rank == 0:
                 step = (self.current_epoch + 1) * self.cfg.training.iters_per_epoch
                 save_checkpoint(self.model, self.optimizer, step, f"{self.cfg.dataset.checkpoint_dir}/ckpt_{step}.pt")
-                loss_eval, eval_ppl = self.evaluation()
+                
+            loss_eval, eval_ppl = self.evaluation()
+            
+            if self.local_rank == 0:
                 logger.info(f"Evaluation at epoch {epoch} | loss_eval: {loss_eval:0.4f} | PPL: {eval_ppl:0.2f}")
                 if self.cfg.logging.use_wandb:
                     wandb.log({
