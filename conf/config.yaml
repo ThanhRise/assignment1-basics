@@ -25,6 +25,9 @@ training:
     beta2: 0.999
     warmup: 1000
     max_l2_norm: 1.0
+    save_interval_updates: 1000
+    keep_interval_updates: 5
+    gradient_accumulation_steps: 1
 
 
 logging:

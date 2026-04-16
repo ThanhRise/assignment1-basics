@@ -145,5 +145,5 @@ def process_to_shards(input_path: str, output_dir: str, tokenizer: BPETokenizer,
 if __name__ == "__main__":
     mp.set_start_method('spawn', force=True)
     tokenizer = BPETokenizer.from_files("data/bpe_vocab.json", "data/bpe_merges.txt", ["<|endoftext|>"])
-    process_to_shards("data/owt_train.txt", "data/train-bin", tokenizer)
+    process_to_shards("data/TinyStoriesV2-GPT4-valid.txt", "data/valid-bin", tokenizer)
     print("Done!")
