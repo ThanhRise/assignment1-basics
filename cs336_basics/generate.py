@@ -31,11 +31,13 @@ def generate(
         torch.Tensor: The generated tokens.
     """
     model.eval()
+    batch_size = prompts.shape[0]
     
     kv_cache = None
     input_ids = prompts
     
-    for _ in tqdm(range(max_new_tokens), desc="Generating tokens", unit="tok"):
+    pbar = tqdm(total=max_new_tokens * batch_size, desc="Generating tokens", unit="tok")
+    for _ in range(max_new_tokens):
         if use_kv_cache:
             logits, kv_cache = model(input_ids, kv_cache=kv_cache, use_cache=True)
         else:
@@ -76,6 +78,9 @@ def generate(
         if use_kv_cache:
             input_ids = next_token
             
+        pbar.update(batch_size)
+            
+    pbar.close()
     return prompts
 
 @torch.no_grad()
