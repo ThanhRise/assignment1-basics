@@ -1,4 +1,7 @@
+import time
+import gc
 import torch
+from tqdm import tqdm
 from cs336_basics.model import TransformerLM
 from cs336_basics.attention import softMax
 
@@ -10,7 +13,8 @@ def generate(
     eos_token_id: int,
     temperature: float = 1.0,
     top_k: int | None = None,
-    top_p: float | None = None) -> torch.Tensor:
+    top_p: float | None = None,
+    use_kv_cache: bool = False) -> torch.Tensor:
     """
     Generate the next token in the sequence for each prompt in the batch.
     
@@ -22,14 +26,21 @@ def generate(
         temperature (float): The temperature to use for generation.
         top_k (int | None): The top k to use for generation.
         top_p (float | None): The top p to use for generation.
+        use_kv_cache (bool): Whether to use KV cache for fast autoregressive generation.
     Returns:
         torch.Tensor: The generated tokens.
     """
     model.eval()
-    batch_size, seq_len = prompts.shape
     
-    for _ in range(max_new_tokens):
-        logits = model(prompts)
+    kv_cache = None
+    input_ids = prompts
+    
+    for _ in tqdm(range(max_new_tokens), desc="Generating tokens", unit="tok"):
+        if use_kv_cache:
+            logits, kv_cache = model(input_ids, kv_cache=kv_cache, use_cache=True)
+        else:
+            logits = model(prompts)
+            
         next_token_logits = logits[:, -1, :] / temperature
         
         if temperature == 0:
@@ -58,9 +69,166 @@ def generate(
             next_token = torch.multinomial(probs, num_samples=1)
         
         prompts = torch.cat([prompts, next_token], dim=-1)
+        
         if (next_token == eos_token_id).any():
             break
+            
+        if use_kv_cache:
+            input_ids = next_token
+            
     return prompts
+
+@torch.no_grad()
+def profile_generation(
+    model: torch.nn.Module,
+    prompts: torch.Tensor,
+    max_new_tokens: int,
+    eos_token_id: int,
+    use_kv_cache: bool = False,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    device: str = "cpu"
+):
+    """
+    Profile the generation process to measure TTFT, TPOT and memory expansion.
+    """
+    model.eval()
+    
+    # Setup Device Memory Tracking and clear initial history
+    gc.collect()
+    if "cuda" in device:
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats(device)
+        torch.cuda.synchronize(device)
+        
+    def get_mem():
+        if "cuda" in device:
+            return torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+        elif "mps" in device:
+            return torch.mps.current_allocated_memory() / (1024 ** 2)
+        else:
+            return 0.0
+
+    start_mem = get_mem()
+    
+    kv_cache = None
+    input_ids = prompts.clone()
+    base_prompts = prompts.clone()
+    
+    ttft = 0.0
+    start_time = time.time()
+    
+    tpot_start = 0.0
+    tokens_generated = 0
+    
+    for i in range(max_new_tokens):
+        if use_kv_cache:
+            logits, kv_cache = model(input_ids, kv_cache=kv_cache, use_cache=True)
+        else:
+            logits = model(base_prompts)
+            
+        next_token_logits = logits[:, -1, :] / temperature
+        
+        if temperature == 0:
+            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+        else:
+            if top_k is not None:
+                top_k_val = min(max(top_k, 1), next_token_logits.size(-1))
+                top_k_values, _ = torch.topk(next_token_logits, top_k_val, dim=-1)
+                kth_value = top_k_values[:, -1, None]
+                indices_to_remove = next_token_logits < kth_value
+                next_token_logits[indices_to_remove] = float('-inf')
+            if top_p is not None and top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                sorted_probs = softMax(sorted_logits, dim=-1)
+                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+                
+                sorted_indices_to_remove = cumulative_probs > top_p
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+
+                indices_to_remove = sorted_indices_to_remove.scatter(
+                    dim=-1, index=sorted_indices, src=sorted_indices_to_remove
+                )
+                next_token_logits[indices_to_remove] = float('-inf')
+            probs = softMax(next_token_logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+        
+        if "cuda" in device:
+            torch.cuda.synchronize(device)
+            
+        # Timing capture
+        if i == 0:
+            ttft = time.time() - start_time
+            tpot_start = time.time()
+            
+        tokens_generated += 1
+        
+        base_prompts = torch.cat([base_prompts, next_token], dim=-1)
+        
+        if (next_token == eos_token_id).any():
+            break
+            
+        if use_kv_cache:
+            input_ids = next_token
+            
+    if "cuda" in device:
+        torch.cuda.synchronize(device)
+        
+    tpot_end = time.time()
+    tpot = 0.0
+    if tokens_generated > 1:
+        tpot = (tpot_end - tpot_start) / (tokens_generated - 1)
+        
+    end_mem = get_mem()
+    mem_expansion = max(0.0, end_mem - start_mem)
+    
+    return ttft * 1000, tpot * 1000, mem_expansion
+
+
+def run_comparative_profiling(model, prompts, max_new_tokens, eos_token_id, temperature=0.0, top_k=None, top_p=None, device="cpu"):
+    print("=" * 60)
+    print(f"Starting Comparative Profiling (Device: {device})")
+    print(f"Prompt batch size: {prompts.size(0)}, Sequence length: {prompts.size(1)}")
+    print(f"Max new tokens to generate: {max_new_tokens}")
+    print("=" * 60 + "\n")
+
+    # 1. Profile Without KV Cache
+    print(">>> Profiling WITHOUT KV Cache")
+    ttft_no, tpot_no, mem_no = profile_generation(
+        model, prompts, max_new_tokens, eos_token_id, 
+        use_kv_cache=False, temperature=temperature, top_k=top_k, top_p=top_p, device=device
+    )
+    print(f"    Time-To-First-Token (TTFT): {ttft_no:.2f} ms")
+    print(f"    Time-Per-Output-Token (TPOT): {tpot_no:.2f} ms/token")
+    print(f"    Memory Expansion: {mem_no:.2f} MB\n")
+    
+    # 2. Profile With KV Cache
+    print(">>> Profiling WITH KV Cache")
+    ttft_kv, tpot_kv, mem_kv = profile_generation(
+        model, prompts, max_new_tokens, eos_token_id, 
+        use_kv_cache=True, temperature=temperature, top_k=top_k, top_p=top_p, device=device
+    )
+    print(f"    Time-To-First-Token (TTFT): {ttft_kv:.2f} ms")
+    print(f"    Time-Per-Output-Token (TPOT): {tpot_kv:.2f} ms/token")
+    print(f"    Memory Expansion: {mem_kv:.2f} MB\n")
+    
+    # 3. Summary comparison
+    print("=" * 60)
+    print("COMPARATIVE SUMMARY")
+    print("=" * 60)
+    
+    if tpot_kv > 0 and tpot_no > 0:
+        speedup = tpot_no / tpot_kv
+        print(f"TPOT Speedup: {speedup:.2f}x faster with KV Cache")
+    else:
+        print("TPOT Speedup: N/A (too few tokens generated)")
+        
+    diff_mem = mem_kv - mem_no
+    print(f"Additional Memory Overhead of KV Cache: {diff_mem:.2f} MB")
+    
+    print("=" * 60)
 
 if __name__ == "__main__":
     import argparse
@@ -77,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_k", type=int, default=None, help="Top-K sampling")
     parser.add_argument("--top_p", type=float, default=None, help="Top-P (nucleus) sampling")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run on (e.g. cpu or cuda)")
+    parser.add_argument("--use_kv_cache", action="store_true", help="Use KV cache for generation")
     
     args = parser.parse_args()
     
@@ -84,7 +253,7 @@ if __name__ == "__main__":
     print("Loading tokenizer...")
     tokenizer = BPETokenizer.from_files(args.bpe_vocab, args.bpe_merges, special_tokens=["<|endoftext|>"])
     # If using the same vocabulary dimension setup as training:
-    eos_token_id = tokenizer.vocab["<|endoftext|>"]
+    eos_token_id = tokenizer.convert_tokens_to_ids(["<|endoftext|>"])[0]
     
     # 2. Encode Prompts and Batch via Left-Padding
     if args.prompt is not None:
@@ -142,7 +311,8 @@ if __name__ == "__main__":
         eos_token_id=eos_token_id,
         temperature=args.temperature,
         top_k=args.top_k,
-        top_p=args.top_p
+        top_p=args.top_p,
+        use_kv_cache=args.use_kv_cache
     )
         
     # 5. Decode and Print
@@ -158,3 +328,16 @@ if __name__ == "__main__":
         print(f"\n--- Sequence {i+1} ---")
         print(final_text)
     print("\n" + "="*76 + "\n")
+
+    # 6. Run Comparative Profiling
+    run_comparative_profiling(
+        model=model,
+        prompts=input_tensor,
+        max_new_tokens=args.max_new_tokens,
+        eos_token_id=eos_token_id,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        device=args.device
+    )
+    

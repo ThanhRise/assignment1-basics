@@ -120,9 +120,8 @@ class MultiHeadSelfAttetion(torch.nn.Module):
         self.v_proj.reset_parameter()
         self.output_proj.reset_parameter()
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor, kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None, use_cache: bool = False) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         #  in_features: Float[Tensor, " ... sequence_length d_in"]
-        seq_len = x.size(-2)
 
         q = self.q_proj(x)
         k = self.k_proj(x)
@@ -137,8 +136,18 @@ class MultiHeadSelfAttetion(torch.nn.Module):
         q = self.rope(q, token_positions_batch)
         k = self.rope(k, token_positions_batch)
 
-        mask = ~torch.triu(torch.ones((seq_len, seq_len), device=x.device), diagonal=1).bool()
+        if kv_cache is not None:
+            past_k, past_v = kv_cache
+            k = torch.cat([past_k, k], dim=-2)
+            v = torch.cat([past_v, v], dim=-2)
+
+        q_len = q.size(-2)
+        kv_len = k.size(-2)
+        mask = ~torch.triu(torch.ones((q_len, kv_len), device=x.device), diagonal=kv_len - q_len + 1).bool()
         attention = scaled_dot_product_attention(Q=q, K=k, V=v, mask=mask)
 
         attention = rearrange(attention, "... num_heads seq_len head_dim -> ... seq_len (num_heads head_dim)")
-        return  self.output_proj(attention)
+        output = self.output_proj(attention)
+        if use_cache:
+            return output, (k, v)
+        return output
