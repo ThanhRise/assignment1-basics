@@ -14,8 +14,7 @@ dependencies = [
     "regex>=2024.11.6", # more powerful regex than the builtin `re` module
     "submitit>=1.5.2", # job submission for SLURM
     "tiktoken>=0.9.0",
-    "torch~=2.6.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "torch~=2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'", # Intel Macs
+    "torch>=2.7.0",
     "tqdm>=4.67.1",
     "wandb>=0.19.7",
     "ty>=0.0.1a16",
@@ -27,9 +26,9 @@ dependencies = [
 moe = [
     "triton>=3.0.0; sys_platform == 'linux'",  # Triton grouped-GEMM MoE (Linux + CUDA only)
 ]
-moe-grouped-mm = [
-    "torch>=2.7.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",  # torch._grouped_mm requires PyTorch 2.7+
-]
+# NOTE: TorchGroupedMMMoE requires torch >= 2.7 (for torch._grouped_mm).
+# To use it, manually upgrade torch: pip install torch>=2.7.0
+# The runtime guard in nn.py will skip it gracefully on torch 2.6.
 
 [build-system]
 requires = ["uv_build>=0.8.3,<0.9.0"]
