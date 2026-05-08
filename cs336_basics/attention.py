@@ -53,8 +53,8 @@ class RoPE(torch.nn.Module):
         self.d_k = d_k
         self.max_seq_len = max_seq_len
         
-        inv_freq = 1.0 / (self.theta ** ((torch.arange(0, self.d_k, 2, dtype=torch.float32))/ self.d_k))
-        t = torch.arange(max_seq_len, dtype=torch.float32)
+        inv_freq = 1.0 / (self.theta ** ((torch.arange(0, self.d_k, 2, dtype=torch.float32, device=device))/ self.d_k))
+        t = torch.arange(max_seq_len, dtype=torch.float32, device=device)
         freqs = torch.outer(t, inv_freq)
         emb = torch.repeat_interleave(freqs, repeats=2, dim=-1)
         self.register_buffer("cos_cache", emb.cos(), persistent=False)
