@@ -33,5 +33,6 @@ training:
 logging:
     log_interval: 50
     use_wandb: true
+    wandb_api_key: "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"          # Set your WandB API key here or via WANDB_API_KEY env var
     run_name: "run-${model.d_model}-${training.lr}"
     wandb_project: my-cool-project

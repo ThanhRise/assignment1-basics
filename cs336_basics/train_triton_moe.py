@@ -74,6 +74,10 @@ def main(cfg: DictConfig):
         logger.info(f"MoE Config: {cfg.model.num_experts} experts, top-{cfg.model.num_experts_per_tok}")
 
     if local_rank == 0 and cfg.logging.use_wandb:
+        # Login with API key from config or env var
+        api_key = cfg.logging.get("wandb_api_key", "") or os.environ.get("WANDB_API_KEY", "")
+        if api_key:
+            wandb.login(key=api_key)
         config_dict = OmegaConf.to_container(cfg, resolve=True)
         wandb.init(
             project=cfg.logging.wandb_project,

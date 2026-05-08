@@ -51,6 +51,10 @@ def main(cfg: DictConfig):
         logger.info(f"Distributed process group initialized. Using device cuda:{local_rank}.")
 
     if local_rank==0 and cfg.logging.use_wandb:
+        # Login with API key from config or env var
+        api_key = cfg.logging.get("wandb_api_key", "") or os.environ.get("WANDB_API_KEY", "")
+        if api_key:
+            wandb.login(key=api_key)
         config_dict = OmegaConf.to_container(cfg, resolve=True)
         wandb.init(
             project=cfg.logging.wandb_project,
