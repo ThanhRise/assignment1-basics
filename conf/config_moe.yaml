@@ -34,6 +34,6 @@ training:
 logging:
     log_interval: 50
     use_wandb: true
-    wandb_api_key: "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"          # Set your WandB API key here or via WANDB_API_KEY env var
+    wandb_api_key: ""          # Set your WandB API key here or via WANDB_API_KEY env var
     run_name: "moe-triton-E${model.num_experts}-K${model.num_experts_per_tok}-d${model.d_model}-lr${training.lr}"
     wandb_project: my-cool-project
