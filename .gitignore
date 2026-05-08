@@ -171,3 +171,7 @@ docs
 .claude/
 CLAUDE.md
 CLAUDE*
+wandb/
+checkpoints/
+outputs/
+logs/
