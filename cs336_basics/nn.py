@@ -416,8 +416,8 @@ class TritonGroupedGEMMMoE(torch.nn.Module):
         sorted_x = x_flat[sorted_token_ids]                        # [T*K, d_model]
 
         # Compute cumulative offsets per expert
-        expert_counts = torch.zeros(self.num_experts, device=x.device, dtype=torch.int32)
-        expert_counts.scatter_add_(0, sorted_expert_ids.int(), torch.ones_like(sorted_expert_ids, dtype=torch.int32))
+        expert_counts = torch.zeros(self.num_experts, device=x.device, dtype=torch.int64)
+        expert_counts.scatter_add_(0, sorted_expert_ids.long(), torch.ones_like(sorted_expert_ids, dtype=torch.int64))
         expert_offsets = expert_counts.cumsum(0).to(torch.int32)    # [E]
 
         # ── 3. Grouped GEMM SwiGLU ─────────────────────────────
@@ -533,8 +533,8 @@ class TorchGroupedMMMoE(torch.nn.Module):
         sorted_x = x_flat[sorted_token_ids].contiguous()  # must be contiguous for _grouped_mm
 
         # Cumulative offsets per expert (int32 required)
-        expert_counts = torch.zeros(self.num_experts, device=x.device, dtype=torch.int32)
-        expert_counts.scatter_add_(0, sorted_expert_ids.int(), torch.ones_like(sorted_expert_ids, dtype=torch.int32))
+        expert_counts = torch.zeros(self.num_experts, device=x.device, dtype=torch.int64)
+        expert_counts.scatter_add_(0, sorted_expert_ids.long(), torch.ones_like(sorted_expert_ids, dtype=torch.int64))
         expert_offsets = expert_counts.cumsum(0).to(torch.int32)
 
         # ── 3. Grouped-MM SwiGLU ───────────────────────────────
