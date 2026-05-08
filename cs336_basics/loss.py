@@ -8,8 +8,9 @@ from torch import Tensor
 def crossEntropyLoss(inputs: Float[Tensor, " ... vocab_size"], targets: Int[Tensor, " ..."], pad_token_id=-100
 ) -> Float[Tensor, ""]:
     # Flatten to handle (batch_size, sequence_length) for LMs
-    inputs = inputs.view(-1, inputs.size(-1))
-    targets = targets.view(-1)
+    # Use reshape instead of view to handle non-contiguous slices (e.g. logits[:, :-1, :])
+    inputs = inputs.reshape(-1, inputs.size(-1))
+    targets = targets.reshape(-1)
     
     batch_size = inputs.size(0)
     lse = torch.logsumexp(inputs, dim=-1)
