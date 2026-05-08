@@ -168,3 +168,6 @@ notebooks/
 .vscode/
 docs/
 docs
+.claude/
+CLAUDE.md
+CLAUDE*
