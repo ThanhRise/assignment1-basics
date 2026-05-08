@@ -26,9 +26,11 @@ dependencies = [
 moe = [
     "triton>=3.0.0; sys_platform == 'linux'",  # Triton grouped-GEMM MoE (Linux + CUDA only)
 ]
-# NOTE: TorchGroupedMMMoE requires torch >= 2.7 (for torch._grouped_mm).
-# To use it, manually upgrade torch: pip install torch>=2.7.0
-# The runtime guard in nn.py will skip it gracefully on torch 2.6.
+# NOTE: TorchGroupedMMMoE requires:
+#   - torch >= 2.8 (for torch._grouped_mm)
+#   - SM >= 90 GPU (H100/H200) — A100 and earlier are NOT supported
+# The runtime guard in nn.py will skip it gracefully with a clear message.
+# Use TritonGroupedGEMMMoE for A100 and earlier GPUs.
 
 [build-system]
 requires = ["uv_build>=0.8.3,<0.9.0"]

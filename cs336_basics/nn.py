@@ -466,12 +466,22 @@ class TorchGroupedMMMoE(torch.nn.Module):
         **kwargs,
     ):
         super().__init__(**kwargs)
+        # ── Availability checks ────────────────────────────────
         if not hasattr(torch, "_grouped_mm"):
             raise RuntimeError(
-                f"torch._grouped_mm requires PyTorch >= 2.7, "
+                f"torch._grouped_mm requires PyTorch >= 2.8, "
                 f"but you have {torch.__version__}. "
                 f"Upgrade PyTorch or use TritonGroupedGEMMMoE instead."
             )
+        if torch.cuda.is_available() and device is not None and str(device) != "cpu":
+            cc = torch.cuda.get_device_capability(device)
+            if cc < (9, 0):
+                raise RuntimeError(
+                    f"torch._grouped_mm requires SM >= 90 (H100/H200), "
+                    f"but your GPU has SM {cc[0]}{cc[1]} "
+                    f"({torch.cuda.get_device_name(device)}). "
+                    f"Use TritonGroupedGEMMMoE instead for A100 and earlier GPUs."
+                )
         self.d_model = d_model
         self.d_ff = d_ff
         self.num_experts = num_experts

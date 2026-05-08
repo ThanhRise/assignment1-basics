@@ -1,0 +1,38 @@
+dataset:
+    train_data: ./data/train_path/
+    valid_data: ./data/valid_path/
+    checkpoint_dir: ./checkpoints/moe/
+
+model:
+    from_checkpoint: false
+    context_length: 1024
+    d_model: 768
+    num_layers: 8
+    num_heads: 12
+    d_ff: 2048
+    theta: 10000
+    # ── MoE ─────────────────────────────
+    num_experts: 16             # Fine-grained: many small experts
+    num_experts_per_tok: 4      # Each token activates 4 out of 16
+
+training:
+    batch_size: 8               # Smaller than dense due to MoE memory overhead
+    iters_per_epoch: 10000
+    max_epoch: 10
+    lr: 1e-3
+    min_lr: 1e-5
+    num_workers: 4
+    weight_decay: 0.1
+    beta1: 0.9
+    beta2: 0.999
+    warmup: 1000
+    max_l2_norm: 1.0
+    save_interval_updates: 1000
+    keep_interval_updates: 5
+    gradient_accumulation_steps: 1
+
+logging:
+    log_interval: 50
+    use_wandb: true
+    run_name: "moe-triton-E${model.num_experts}-K${model.num_experts_per_tok}-d${model.d_model}-lr${training.lr}"
+    wandb_project: my-cool-project
