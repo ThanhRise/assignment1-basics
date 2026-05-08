@@ -466,6 +466,12 @@ class TorchGroupedMMMoE(torch.nn.Module):
         **kwargs,
     ):
         super().__init__(**kwargs)
+        if not hasattr(torch, "_grouped_mm"):
+            raise RuntimeError(
+                f"torch._grouped_mm requires PyTorch >= 2.7, "
+                f"but you have {torch.__version__}. "
+                f"Upgrade PyTorch or use TritonGroupedGEMMMoE instead."
+            )
         self.d_model = d_model
         self.d_ff = d_ff
         self.num_experts = num_experts

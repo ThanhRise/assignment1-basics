@@ -224,7 +224,7 @@ def build_model(name: str, cls, cfg: BenchmarkConfig, device: torch.device) -> t
             device=device,
         )
         return model
-    except (ImportError, RuntimeError) as e:
+    except (ImportError, RuntimeError, AttributeError) as e:
         print(f"  ⚠ Skipping {name}: {e}")
         return None
 
