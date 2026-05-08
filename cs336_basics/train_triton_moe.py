@@ -146,7 +146,9 @@ def main(cfg: DictConfig):
     else:
         iteration = 0
 
-    model = DDP(model, device_ids=[local_rank])
+    # MoE: not all expert weights receive gradients every step (only top-K selected),
+    # so DDP must be told to expect unused parameters.
+    model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
     os.makedirs(cfg.dataset.checkpoint_dir, exist_ok=True)
 
     # ── Train ─────────────────────────────────────────────────
