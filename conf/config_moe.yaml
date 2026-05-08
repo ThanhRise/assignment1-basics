@@ -1,6 +1,6 @@
 dataset:
-    train_data: ./data/train_path/
-    valid_data: ./data/valid_path/
+    train_data: ./data/train-bin/
+    valid_data: ./data/valid-bin/
     checkpoint_dir: ./checkpoints/moe/
 
 model:
