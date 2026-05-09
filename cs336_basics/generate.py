@@ -360,29 +360,13 @@ if __name__ == "__main__":
     print("\n" + "="*76 + "\n")
 
     # 6. Run Comparative Profiling
-    is_moe = args.model_type in ("moe_einsum", "moe_triton")
-    if is_moe:
-        print("\nNote: MoE models do not support KV cache. Running profiling without KV cache only.")
-        ttft, tpot, mem = profile_generation(
-            model=model,
-            prompts=input_tensor,
-            max_new_tokens=args.max_new_tokens,
-            eos_token_id=eos_token_id,
-            use_kv_cache=False,
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            device=args.device,
-        )
-        print(f"  TTFT: {ttft:.2f} ms | TPOT: {tpot:.2f} ms/token | Memory: {mem:.2f} MB")
-    else:
-        run_comparative_profiling(
-            model=model,
-            prompts=input_tensor,
-            max_new_tokens=args.max_new_tokens,
-            eos_token_id=eos_token_id,
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            device=args.device,
-        )
+    run_comparative_profiling(
+        model=model,
+        prompts=input_tensor,
+        max_new_tokens=args.max_new_tokens,
+        eos_token_id=eos_token_id,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        device=args.device,
+    )

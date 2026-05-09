@@ -201,12 +201,32 @@ class TransformerLM_MoE(torch.nn.Module):
         self.ln_final = RMSNorm(d_model=d_model, **factory_kwargs)
         self.lm_head = Linear(in_features=d_model, out_features=vocab_size, **factory_kwargs)
 
-    def forward(self, input_ids: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, token_positions: torch.Tensor | None = None, kv_cache: list[tuple[torch.Tensor, torch.Tensor]] | None = None, use_cache: bool = False) -> torch.Tensor | tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        if token_positions is None:
+            seq_len = input_ids.size(-1)
+            positions = torch.arange(seq_len, device=input_ids.device)
+            if kv_cache is not None:
+                past_len = kv_cache[0][0].size(-2)
+                positions = positions + past_len
+            batch_dim = input_ids.shape[:-1]
+            token_positions = positions.expand(*batch_dim, seq_len)
+
         x = self.token_embeddings(input_ids)
-        for layer in self.layers:
-            x = layer(x)
+        new_kv_cache = []
+        for i, layer in enumerate(self.layers):
+            layer_kv_cache = kv_cache[i] if kv_cache is not None else None
+            layer_out = layer(x, token_positions=token_positions, kv_cache=layer_kv_cache, use_cache=use_cache)
+            if use_cache:
+                x, new_layer_kv_cache = layer_out
+                new_kv_cache.append(new_layer_kv_cache)
+            else:
+                x = layer_out
+
         x = self.ln_final(x)
-        return self.lm_head(x)
+        logits = self.lm_head(x)
+        if use_cache:
+            return logits, new_kv_cache
+        return logits
 
 
 class TransformerLM_TritonMoE(torch.nn.Module):
@@ -226,12 +246,32 @@ class TransformerLM_TritonMoE(torch.nn.Module):
         self.ln_final = RMSNorm(d_model=d_model, **factory_kwargs)
         self.lm_head = Linear(in_features=d_model, out_features=vocab_size, **factory_kwargs)
 
-    def forward(self, input_ids: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, token_positions: torch.Tensor | None = None, kv_cache: list[tuple[torch.Tensor, torch.Tensor]] | None = None, use_cache: bool = False) -> torch.Tensor | tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        if token_positions is None:
+            seq_len = input_ids.size(-1)
+            positions = torch.arange(seq_len, device=input_ids.device)
+            if kv_cache is not None:
+                past_len = kv_cache[0][0].size(-2)
+                positions = positions + past_len
+            batch_dim = input_ids.shape[:-1]
+            token_positions = positions.expand(*batch_dim, seq_len)
+
         x = self.token_embeddings(input_ids)
-        for layer in self.layers:
-            x = layer(x)
+        new_kv_cache = []
+        for i, layer in enumerate(self.layers):
+            layer_kv_cache = kv_cache[i] if kv_cache is not None else None
+            layer_out = layer(x, token_positions=token_positions, kv_cache=layer_kv_cache, use_cache=use_cache)
+            if use_cache:
+                x, new_layer_kv_cache = layer_out
+                new_kv_cache.append(new_layer_kv_cache)
+            else:
+                x = layer_out
+
         x = self.ln_final(x)
-        return self.lm_head(x)
+        logits = self.lm_head(x)
+        if use_cache:
+            return logits, new_kv_cache
+        return logits
 
 
 class TransformerLM_GroupedMMMoE(torch.nn.Module):
@@ -251,9 +291,29 @@ class TransformerLM_GroupedMMMoE(torch.nn.Module):
         self.ln_final = RMSNorm(d_model=d_model, **factory_kwargs)
         self.lm_head = Linear(in_features=d_model, out_features=vocab_size, **factory_kwargs)
 
-    def forward(self, input_ids: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, token_positions: torch.Tensor | None = None, kv_cache: list[tuple[torch.Tensor, torch.Tensor]] | None = None, use_cache: bool = False) -> torch.Tensor | tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        if token_positions is None:
+            seq_len = input_ids.size(-1)
+            positions = torch.arange(seq_len, device=input_ids.device)
+            if kv_cache is not None:
+                past_len = kv_cache[0][0].size(-2)
+                positions = positions + past_len
+            batch_dim = input_ids.shape[:-1]
+            token_positions = positions.expand(*batch_dim, seq_len)
+
         x = self.token_embeddings(input_ids)
-        for layer in self.layers:
-            x = layer(x)
+        new_kv_cache = []
+        for i, layer in enumerate(self.layers):
+            layer_kv_cache = kv_cache[i] if kv_cache is not None else None
+            layer_out = layer(x, token_positions=token_positions, kv_cache=layer_kv_cache, use_cache=use_cache)
+            if use_cache:
+                x, new_layer_kv_cache = layer_out
+                new_kv_cache.append(new_layer_kv_cache)
+            else:
+                x = layer_out
+
         x = self.ln_final(x)
-        return self.lm_head(x)
+        logits = self.lm_head(x)
+        if use_cache:
+            return logits, new_kv_cache
+        return logits
