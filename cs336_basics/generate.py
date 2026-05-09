@@ -2,7 +2,7 @@ import time
 import gc
 import torch
 from tqdm import tqdm
-from cs336_basics.model import TransformerLM
+from cs336_basics.model import TransformerLM, TransformerLM_MoE, TransformerLM_TritonMoE
 from cs336_basics.attention import softMax
 
 @torch.no_grad()
@@ -250,7 +250,12 @@ if __name__ == "__main__":
     parser.add_argument("--top_k", type=int, default=None, help="Top-K sampling")
     parser.add_argument("--top_p", type=float, default=None, help="Top-P (nucleus) sampling")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run on (e.g. cpu or cuda)")
-    parser.add_argument("--use_kv_cache", action="store_true", help="Use KV cache for generation")
+    parser.add_argument("--use_kv_cache", action="store_true", help="Use KV cache for generation (dense model only)")
+    parser.add_argument("--model_type", type=str, default="dense",
+                        choices=["dense", "moe_einsum", "moe_triton"],
+                        help="Model architecture: dense, moe_einsum, or moe_triton")
+    parser.add_argument("--num_experts", type=int, default=16, help="Number of experts (MoE only)")
+    parser.add_argument("--num_experts_per_tok", type=int, default=4, help="Experts per token (MoE only)")
     
     args = parser.parse_args()
     
@@ -281,24 +286,41 @@ if __name__ == "__main__":
     input_tensor = torch.tensor(padded_prompts, dtype=torch.long, device=args.device)
     
     # 3. Initialize Model
-    print("Loading model...")
+    print(f"Loading model (type={args.model_type})...")
     # NOTE: Ensure these architecture parameters match what your checkpoint was trained with
-    model = TransformerLM(
-        vocab_size=len(tokenizer.vocab), 
-        context_length=1024, 
-        num_layers=8, 
-        num_heads=12, 
-        d_model=768, 
-        d_ff=2048, 
-        rope_theta=10000
+    model_kwargs = dict(
+        vocab_size=len(tokenizer.vocab),
+        context_length=1024,
+        num_layers=8,
+        num_heads=12,
+        d_model=768,
+        d_ff=2048,
+        rope_theta=10000,
     )
+
+    if args.model_type == "dense":
+        model = TransformerLM(**model_kwargs)
+    elif args.model_type == "moe_einsum":
+        model = TransformerLM_MoE(
+            **model_kwargs,
+            num_experts=args.num_experts,
+            num_experts_per_tok=args.num_experts_per_tok,
+        )
+    elif args.model_type == "moe_triton":
+        model = TransformerLM_TritonMoE(
+            **model_kwargs,
+            num_experts=args.num_experts,
+            num_experts_per_tok=args.num_experts_per_tok,
+        )
+    else:
+        raise ValueError(f"Unknown model_type: {args.model_type}")
     
     # Safely load the weights
     checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=True)
     
     # Check if this is a dict containing the "model" key (like our trainer saves)
     if "model" in checkpoint:
-        # Strip out any DDP "module." prefixes if the checkpoint was saved under DDP incorrectly
+        # Strip out any DDP "module." prefixes if the checkpoint was saved under DDP
         state_dict = checkpoint["model"]
         clean_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         model.load_state_dict(clean_state_dict)
@@ -306,6 +328,9 @@ if __name__ == "__main__":
         model.load_state_dict(checkpoint)
         
     model.to(args.device)
+    
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Model loaded: {num_params:,} parameters")
     
     # 4. Generate Output
     print(f"\nGenerating {len(lines)} sequences in a single batch...")
@@ -335,14 +360,29 @@ if __name__ == "__main__":
     print("\n" + "="*76 + "\n")
 
     # 6. Run Comparative Profiling
-    run_comparative_profiling(
-        model=model,
-        prompts=input_tensor,
-        max_new_tokens=args.max_new_tokens,
-        eos_token_id=eos_token_id,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        device=args.device
-    )
-    
+    is_moe = args.model_type in ("moe_einsum", "moe_triton")
+    if is_moe:
+        print("\nNote: MoE models do not support KV cache. Running profiling without KV cache only.")
+        ttft, tpot, mem = profile_generation(
+            model=model,
+            prompts=input_tensor,
+            max_new_tokens=args.max_new_tokens,
+            eos_token_id=eos_token_id,
+            use_kv_cache=False,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            device=args.device,
+        )
+        print(f"  TTFT: {ttft:.2f} ms | TPOT: {tpot:.2f} ms/token | Memory: {mem:.2f} MB")
+    else:
+        run_comparative_profiling(
+            model=model,
+            prompts=input_tensor,
+            max_new_tokens=args.max_new_tokens,
+            eos_token_id=eos_token_id,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            device=args.device,
+        )
